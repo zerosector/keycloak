@@ -45,11 +45,13 @@ import org.keycloak.admin.client.Keycloak;
 import org.keycloak.common.util.StringPropertyReplacer;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.services.error.KeycloakErrorHandler;
+import org.keycloak.testsuite.arquillian.annotation.SetDefaultProvider;
 import org.keycloak.testsuite.arquillian.annotation.UncaughtServerErrorExpected;
 import org.keycloak.testsuite.arquillian.annotation.EnableVault;
 import org.keycloak.testsuite.client.KeycloakTestingClient;
 import org.keycloak.testsuite.util.LogChecker;
 import org.keycloak.testsuite.util.OAuthClient;
+import org.keycloak.testsuite.util.SpiProvidersSwitchingUtils;
 import org.keycloak.testsuite.util.SqlUtils;
 import org.keycloak.testsuite.util.SystemInfoHelper;
 import org.keycloak.testsuite.util.VaultUtils;
@@ -350,6 +352,19 @@ public class AuthServerTestEnricher {
         }
     }
 
+    public static void executeCli(String... commands) throws Exception {
+        OnlineManagementClient client = AuthServerTestEnricher.getManagementClient();
+        Administration administration = new Administration(client);
+
+        for (String c : commands) {
+            client.execute(c).assertSuccess();
+        }
+
+        administration.reload();
+
+        client.close();
+    }
+
     private ContainerInfo updateWithAuthServerInfo(ContainerInfo authServerInfo) {
         return updateWithAuthServerInfo(authServerInfo, 0);
     }
@@ -531,10 +546,22 @@ public class AuthServerTestEnricher {
         TestContext testContext = new TestContext(suiteContext, event.getTestClass().getJavaClass());
         testContextProducer.set(testContext);
 
-        if (!isAuthServerRemote() && !isAuthServerQuarkus() && event.getTestClass().isAnnotationPresent(EnableVault.class)) {
-            VaultUtils.enableVault(suiteContext, event.getTestClass().getAnnotation(EnableVault.class).providerId());
-            restartAuthServer();
-            testContext.reconnectAdminClient();
+        if (!isAuthServerRemote() && !isAuthServerQuarkus()) {
+            boolean wasUpdated = false;
+
+            if (event.getTestClass().isAnnotationPresent(EnableVault.class)) {
+                VaultUtils.enableVault(suiteContext, event.getTestClass().getAnnotation(EnableVault.class).providerId());
+                wasUpdated = true;
+            }
+            if (event.getTestClass().isAnnotationPresent(SetDefaultProvider.class)) {
+                SpiProvidersSwitchingUtils.addProviderDefaultValue(suiteContext, event.getTestClass().getAnnotation(SetDefaultProvider.class));
+                wasUpdated = true;
+            }
+
+            if (wasUpdated) {
+                restartAuthServer();
+                testContext.reconnectAdminClient();
+            }
         }
     }
 
@@ -584,53 +611,56 @@ public class AuthServerTestEnricher {
     public static void setJsseSecurityProviderForOutboundSslConnectionsOfElytronClient(@Observes(precedence = 100) StartSuiteContainers event) {
         log.info(
             "Determining the JSSE security provider to use for outbound " +
-            "SSL/TLS connections of the Elytron client..."
+            "SSL/TLS connections of the Elytron client"
         );
-        /** First locate the wildfly-config.xml to use. Per:
-         *  https://docs.wildfly.org/21/Client_Guide.html#wildfly-config-xml-discovery
-         *
-         *  1) try to load it from the 'wildfly.config.url' property
-         */
-        String wildflyConfigXmlPath = System.getProperty("wildfly.config.url");
 
-        //  2) If not set, scan the classpath
+        // Use path to wildfly-config.xml directly if specified
+        String wildflyConfigXmlPath =
+            System.getProperty("wildfly-client.config.path");
+
+        // Otherwise scan the classpath to determine its location
         if (wildflyConfigXmlPath == null) {
-            log.debug("Scanning classpath to locate wildfly-config.xml...");
+            log.debug("Scanning classpath to locate wildfly-config.xml");
             final String javaClassPath = System.getProperty("java.class.path");
-            for (String dir : javaClassPath.split(":")) {
+            for (String dir : javaClassPath.split(File.pathSeparator)) {
                 if (!dir.isEmpty()) {
                     String candidatePath = dir + File.separator +
                         "wildfly-config.xml";
                     if (new File(candidatePath).exists()) {
                         wildflyConfigXmlPath = candidatePath;
                         log.debugf(
-                            "Using wildfly-config.xml at '%s' location!",
+                            "Found wildfly-config.xml at '%s' location",
                             wildflyConfigXmlPath
                         );
                         break;
                     }
                 }
             }
+        }
+
+        final File wildflyConfigXml = ( wildflyConfigXmlPath != null ) ?
+            new File(wildflyConfigXmlPath)                             :
+            null;
+
+        // Throw an error if wildfly-config.xml path specified directly via the
+        // 'wildfly-client.config.path' property doesn't represent a regular file
+        // on the file system, or if it wasn't found by scanning the classpath
+        if ( wildflyConfigXml == null || ! wildflyConfigXml.exists() ) {
+            throw new RuntimeException(
+                "Failed to locate the wildfly-config.xml to use for " +
+                "the configuration of Elytron client"
+            );
         } else {
             log.debugf(
-                "Using wildfly-config.xml from 'wildfly.config.url' " +
-                "property at '%s' location",
+                "Using wildfly-config.xml from '%s' location",
                 wildflyConfigXmlPath
             );
         }
-        // If still not found, that's an error
-        if (wildflyConfigXmlPath == null) {
-            throw new RuntimeException(
-                "Failed to locate the wildfly-config.xml to use for " +
-                "the configuration of Elytron client!"
-            );
-        }
+
         /** Determine the name of the system property from wildfly-config.xml
          *  holding the name of the security provider which is used by Elytron
          *  client to define its SSL context for outbound SSL connections.
          */
-        final File wildflyConfigXml = new File(wildflyConfigXmlPath);
-
         String jsseSecurityProviderSystemProperty = null;
         try {
             DocumentBuilder documentBuilder = DocumentBuilderFactory
@@ -642,7 +672,7 @@ public class AuthServerTestEnricher {
             if (nodeList.getLength() != 1) {
                 throw new RuntimeException(
                     "Failed to locate the 'provider-name' element " +
-                    "in wildfly-config.xml XML file!"
+                    "in wildfly-config.xml XML file"
                 );
             }
             String providerNameElement = nodeList.item(0).getAttributes()
@@ -655,12 +685,12 @@ public class AuthServerTestEnricher {
         } catch (IOException e) {
             throw new RuntimeException(String.format(
                 "Error reading the '%s' file. Please make sure the provided " +
-                "path is correct and retry!",
+                "path is correct and retry",
                 wildflyConfigXml.getAbsolutePath()
             ));
         } catch (ParserConfigurationException|SAXException e) {
             throw new RuntimeException(String.format(
-                "Failed to parse the '%s' XML file!",
+                "Failed to parse the '%s' XML file",
                 wildflyConfigXml.getAbsolutePath()
             ));
         }
@@ -677,7 +707,7 @@ public class AuthServerTestEnricher {
         } else {
             throw new RuntimeException(
                 "Failed to determine the name of system property " +
-                "holding JSSE security provider's name for Elytron client!"
+                "holding JSSE security provider's name for Elytron client"
             );
         }
 
@@ -725,7 +755,7 @@ public class AuthServerTestEnricher {
                     } else {
                         throw new RuntimeException(
                             "The SunJSSE provider is not present " +
-                            "on the platform!"
+                            "on the platform"
                         );
                     }
                 }
@@ -738,11 +768,11 @@ public class AuthServerTestEnricher {
             } else {
                 throw new RuntimeException(
                     "Cannot identify a security provider for Elytron client " +
-                    "offering the TLSv1.2 capability!"
+                    "offering the TLSv1.2 capability"
                 );
             }
             log.infof(
-                "Using the '%s' JSSE provider!", platformJsseProvider.getName()
+                "Using the '%s' JSSE provider", platformJsseProvider.getName()
             );
         }
     }
@@ -780,7 +810,7 @@ public class AuthServerTestEnricher {
 
             administration.reloadIfRequired();
         } else {
-            log.info("## The Auth Server has already configured TLS. Skipping... ##");
+            log.info("## The Auth Server has already configured TLS. Skipping ##");
         }
     }
 
@@ -848,10 +878,23 @@ public class AuthServerTestEnricher {
 
         removeTestRealms(testContext, adminClient);
 
-        if (!isAuthServerRemote() && event.getTestClass().isAnnotationPresent(EnableVault.class)) {
-            VaultUtils.disableVault(suiteContext, event.getTestClass().getAnnotation(EnableVault.class).providerId());
-            restartAuthServer();
-            testContext.reconnectAdminClient();
+        if (!isAuthServerRemote() && !isAuthServerQuarkus()) {
+            
+            boolean wasUpdated = false;
+            if (event.getTestClass().isAnnotationPresent(EnableVault.class)) {
+                VaultUtils.disableVault(suiteContext, event.getTestClass().getAnnotation(EnableVault.class).providerId());
+                wasUpdated = true;
+            }
+
+            if (event.getTestClass().isAnnotationPresent(SetDefaultProvider.class)) {
+                SpiProvidersSwitchingUtils.removeProvider(suiteContext, event.getTestClass().getAnnotation(SetDefaultProvider.class));
+                wasUpdated = true;
+            }
+
+            if (wasUpdated) {
+                restartAuthServer();
+                testContext.reconnectAdminClient();
+            }
         }
 
         if (adminClient != null) {

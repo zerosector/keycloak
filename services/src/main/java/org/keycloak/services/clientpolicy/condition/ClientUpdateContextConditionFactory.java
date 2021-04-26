@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Red Hat, Inc. and/or its affiliates
+ * Copyright 2021 Red Hat, Inc. and/or its affiliates
  * and other contributors as indicated by the @author tags.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,13 +22,13 @@ import java.util.Arrays;
 import java.util.List;
 
 import org.keycloak.Config.Scope;
-import org.keycloak.component.ComponentModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.KeycloakSessionFactory;
 import org.keycloak.provider.ProviderConfigProperty;
-import org.keycloak.services.clientpolicy.condition.ClientPolicyConditionProvider;
-import org.keycloak.services.clientpolicy.condition.ClientPolicyConditionProviderFactory;
 
+/**
+ * @author <a href="mailto:takashi.norimatsu.ws@hitachi.com">Takashi Norimatsu</a>
+ */
 public class ClientUpdateContextConditionFactory implements ClientPolicyConditionProviderFactory {
 
     public static final String PROVIDER_ID = "clientupdatecontext-condition";
@@ -51,10 +51,10 @@ public class ClientUpdateContextConditionFactory implements ClientPolicyConditio
     }
 
     @Override
-    public ClientPolicyConditionProvider create(KeycloakSession session, ComponentModel model) {
-        return new ClientUpdateContextCondition(session, model);
+    public ClientPolicyConditionProvider create(KeycloakSession session) {
+        return new ClientUpdateContextCondition(session);
     }
- 
+
     @Override
     public void init(Scope config) {
     }

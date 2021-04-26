@@ -76,6 +76,7 @@ import org.keycloak.models.IdentityProviderModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.LDAPConstants;
 import org.keycloak.models.ModelException;
+import org.keycloak.models.OAuth2DeviceConfig;
 import org.keycloak.models.OTPPolicy;
 import org.keycloak.models.PasswordPolicy;
 import org.keycloak.models.ProtocolMapperModel;
@@ -187,6 +188,7 @@ public class RepresentationToModel {
         if (rep.getNotBefore() != null) newRealm.setNotBefore(rep.getNotBefore());
 
         if (rep.getDefaultSignatureAlgorithm() != null) newRealm.setDefaultSignatureAlgorithm(rep.getDefaultSignatureAlgorithm());
+        else newRealm.setDefaultSignatureAlgorithm(Constants.DEFAULT_SIGNATURE_ALGORITHM);
 
         if (rep.getRevokeRefreshToken() != null) newRealm.setRevokeRefreshToken(rep.getRevokeRefreshToken());
         else newRealm.setRevokeRefreshToken(false);
@@ -248,6 +250,12 @@ public class RepresentationToModel {
         if (rep.getActionTokenGeneratedByUserLifespan() != null)
             newRealm.setActionTokenGeneratedByUserLifespan(rep.getActionTokenGeneratedByUserLifespan());
         else newRealm.setActionTokenGeneratedByUserLifespan(newRealm.getAccessCodeLifespanUserAction());
+
+        // OAuth 2.0 Device Authorization Grant
+        OAuth2DeviceConfig deviceConfig = newRealm.getOAuth2DeviceConfig();
+
+        deviceConfig.setOAuth2DeviceCodeLifespan(rep.getOAuth2DeviceCodeLifespan());
+        deviceConfig.setOAuth2DevicePollingInterval(rep.getOAuth2DevicePollingInterval());
 
         if (rep.getSslRequired() != null)
             newRealm.setSslRequired(SslRequired.valueOf(rep.getSslRequired().toUpperCase()));
@@ -312,7 +320,7 @@ public class RepresentationToModel {
                 if (clientScope != null) {
                     newRealm.addDefaultClientScope(clientScope, true);
                 } else {
-                    logger.warnf("Referenced client scope '%s' doesn't exists", clientScopeName);
+                    logger.warnf("Referenced client scope '%s' doesn't exist", clientScopeName);
                 }
             }
         }
@@ -322,7 +330,7 @@ public class RepresentationToModel {
                 if (clientScope != null) {
                     newRealm.addDefaultClientScope(clientScope, false);
                 } else {
-                    logger.warnf("Referenced client scope '%s' doesn't exists", clientScopeName);
+                    logger.warnf("Referenced client scope '%s' doesn't exist", clientScopeName);
                 }
             }
         }
@@ -1110,6 +1118,12 @@ public class RepresentationToModel {
             realm.setActionTokenGeneratedByAdminLifespan(rep.getActionTokenGeneratedByAdminLifespan());
         if (rep.getActionTokenGeneratedByUserLifespan() != null)
             realm.setActionTokenGeneratedByUserLifespan(rep.getActionTokenGeneratedByUserLifespan());
+
+        OAuth2DeviceConfig deviceConfig = realm.getOAuth2DeviceConfig();
+
+        deviceConfig.setOAuth2DeviceCodeLifespan(rep.getOAuth2DeviceCodeLifespan());
+        deviceConfig.setOAuth2DevicePollingInterval(rep.getOAuth2DevicePollingInterval());
+
         if (rep.getNotBefore() != null) realm.setNotBefore(rep.getNotBefore());
         if (rep.getDefaultSignatureAlgorithm() != null) realm.setDefaultSignatureAlgorithm(rep.getDefaultSignatureAlgorithm());
         if (rep.getRevokeRefreshToken() != null) realm.setRevokeRefreshToken(rep.getRevokeRefreshToken());
@@ -1448,12 +1462,12 @@ public class RepresentationToModel {
 
         if (resourceRep.getDefaultClientScopes() != null || resourceRep.getOptionalClientScopes() != null) {
             // First remove all default/built in client scopes
-            for (ClientScopeModel clientScope : client.getClientScopes(true, false).values()) {
+            for (ClientScopeModel clientScope : client.getClientScopes(true).values()) {
                 client.removeClientScope(clientScope);
             }
 
             // First remove all default/built in client scopes
-            for (ClientScopeModel clientScope : client.getClientScopes(false, false).values()) {
+            for (ClientScopeModel clientScope : client.getClientScopes(false).values()) {
                 client.removeClientScope(clientScope);
             }
         }
@@ -1486,7 +1500,7 @@ public class RepresentationToModel {
         if (clientScope != null) {
             client.addClientScope(clientScope, defaultScope);
         } else {
-            logger.warnf("Referenced client scope '%s' doesn't exists. Ignoring", clientScopeName);
+            logger.warnf("Referenced client scope '%s' doesn't exist. Ignoring", clientScopeName);
         }
     }
 
@@ -2025,7 +2039,7 @@ public class RepresentationToModel {
         // Backwards compatibility. If user had consent for "offline_access" role, we treat it as he has consent for "offline_access" client scope
         if (consentRep.getGrantedRealmRoles() != null) {
             if (consentRep.getGrantedRealmRoles().contains(OAuth2Constants.OFFLINE_ACCESS)) {
-                ClientScopeModel offlineScope = client.getClientScopes(false, true).get(OAuth2Constants.OFFLINE_ACCESS);
+                ClientScopeModel offlineScope = client.getClientScopes(false).get(OAuth2Constants.OFFLINE_ACCESS);
                 if (offlineScope == null) {
                     logger.warn("Unable to find offline_access scope referenced in grantedRoles of user");
                 }

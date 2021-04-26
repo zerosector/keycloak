@@ -65,6 +65,7 @@ import org.keycloak.services.managers.AppAuthManager;
 import org.keycloak.services.managers.Auth;
 import org.keycloak.services.managers.AuthenticationManager;
 import org.keycloak.services.managers.AuthenticationSessionManager;
+import org.keycloak.services.managers.UserConsentManager;
 import org.keycloak.services.managers.UserSessionManager;
 import org.keycloak.services.messages.Messages;
 import org.keycloak.services.resources.AbstractSecuredLocalService;
@@ -101,7 +102,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
+import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -363,6 +364,9 @@ public class AccountFormService extends AbstractSecuredLocalService {
         csrfCheck(formData);
 
         UserModel user = auth.getUser();
+
+        String oldFirstName = user.getFirstName();
+        String oldLastName = user.getLastName();
         String oldEmail = user.getEmail();
 
         event.event(EventType.UPDATE_PROFILE).client(auth.getClient()).user(auth.getUser());
@@ -385,6 +389,9 @@ public class AccountFormService extends AbstractSecuredLocalService {
 
         UserProfile updatedProfile = result.getProfile();
         String newEmail = updatedProfile.getAttributes().getFirstAttribute(UserModel.EMAIL);
+        String newFirstName = updatedProfile.getAttributes().getFirstAttribute(UserModel.FIRST_NAME);
+        String newLastName = updatedProfile.getAttributes().getFirstAttribute(UserModel.LAST_NAME);
+
 
         try {
             // backward compatibility with old account console where attributes are not removed if missing
@@ -394,9 +401,15 @@ public class AccountFormService extends AbstractSecuredLocalService {
             return account.setError(Response.Status.BAD_REQUEST, Messages.READ_ONLY_USER).setProfileFormData(formData).createResponse(AccountPages.ACCOUNT);
         }
 
+        if (result.hasAttributeChanged(UserModel.FIRST_NAME)) {
+            event.detail(Details.PREVIOUS_FIRST_NAME, oldFirstName).detail(Details.UPDATED_FIRST_NAME, newFirstName);
+        }
+        if (result.hasAttributeChanged(UserModel.LAST_NAME)) {
+            event.detail(Details.PREVIOUS_LAST_NAME, oldLastName).detail(Details.UPDATED_LAST_NAME, newLastName);
+        }
         if (result.hasAttributeChanged(UserModel.EMAIL)) {
             user.setEmailVerified(false);
-            event.clone().event(EventType.UPDATE_EMAIL).detail(Details.PREVIOUS_EMAIL, oldEmail).detail(Details.UPDATED_EMAIL, newEmail).success();
+            event.detail(Details.PREVIOUS_EMAIL, oldEmail).detail(Details.UPDATED_EMAIL, newEmail);
         }
 
         event.success();
@@ -465,11 +478,7 @@ public class AccountFormService extends AbstractSecuredLocalService {
 
         // Revoke grant in UserModel
         UserModel user = auth.getUser();
-        session.users().revokeConsentForClient(realm, user.getId(), client.getId());
-        new UserSessionManager(session).revokeOfflineToken(user, client);
-
-        // Logout clientSessions for this user and client
-        AuthenticationManager.backchannelLogoutUserFromClient(session, realm, user, client, session.getContext().getUri(), headers);
+        UserConsentManager.revokeConsentToClient(session, client, user);
 
         event.event(EventType.REVOKE_GRANT).client(auth.getClient()).user(auth.getUser()).detail(Details.REVOKED_CLIENT, client.getClientId()).success();
         setReferrerOnPage();
@@ -828,15 +837,15 @@ public class AccountFormService extends AbstractSecuredLocalService {
                 policyStore.delete(policy.getId());
             }
         } else {
-            Map<String, String> filters = new HashMap<>();
+            Map<PermissionTicket.FilterOption, String> filters = new EnumMap<>(PermissionTicket.FilterOption.class);
 
-            filters.put(PermissionTicket.RESOURCE, resource.getId());
-            filters.put(PermissionTicket.REQUESTER, session.users().getUserByUsername(realm, requester).getId());
+            filters.put(PermissionTicket.FilterOption.RESOURCE_ID, resource.getId());
+            filters.put(PermissionTicket.FilterOption.REQUESTER, session.users().getUserByUsername(realm, requester).getId());
 
             if (isRevoke) {
-                filters.put(PermissionTicket.GRANTED, Boolean.TRUE.toString());
+                filters.put(PermissionTicket.FilterOption.GRANTED, Boolean.TRUE.toString());
             } else {
-                filters.put(PermissionTicket.GRANTED, Boolean.FALSE.toString());
+                filters.put(PermissionTicket.FilterOption.GRANTED, Boolean.FALSE.toString());
             }
 
             List<PermissionTicket> tickets = ticketStore.find(filters, resource.getResourceServer(), -1, -1);
@@ -922,11 +931,11 @@ public class AccountFormService extends AbstractSecuredLocalService {
                 return account.setError(Status.BAD_REQUEST, Messages.INVALID_USER).createResponse(AccountPages.RESOURCE_DETAIL);
             }
 
-            Map<String, String> filters = new HashMap<>();
+            Map<PermissionTicket.FilterOption, String> filters = new EnumMap<>(PermissionTicket.FilterOption.class);
 
-            filters.put(PermissionTicket.RESOURCE, resource.getId());
-            filters.put(PermissionTicket.OWNER, auth.getUser().getId());
-            filters.put(PermissionTicket.REQUESTER, user.getId());
+            filters.put(PermissionTicket.FilterOption.RESOURCE_ID, resource.getId());
+            filters.put(PermissionTicket.FilterOption.OWNER, auth.getUser().getId());
+            filters.put(PermissionTicket.FilterOption.REQUESTER, user.getId());
 
             List<PermissionTicket> tickets = ticketStore.find(filters, resource.getResourceServer(), -1, -1);
 
@@ -994,15 +1003,15 @@ public class AccountFormService extends AbstractSecuredLocalService {
                 return ErrorResponse.error("Invalid resource", Response.Status.BAD_REQUEST);
             }
 
-            HashMap<String, String> filters = new HashMap<>();
+            Map<PermissionTicket.FilterOption, String> filters = new EnumMap<>(PermissionTicket.FilterOption.class);
 
-            filters.put(PermissionTicket.REQUESTER, auth.getUser().getId());
-            filters.put(PermissionTicket.RESOURCE, resource.getId());
+            filters.put(PermissionTicket.FilterOption.REQUESTER, auth.getUser().getId());
+            filters.put(PermissionTicket.FilterOption.RESOURCE_ID, resource.getId());
 
             if ("cancel".equals(action)) {
-                filters.put(PermissionTicket.GRANTED, Boolean.TRUE.toString());
+                filters.put(PermissionTicket.FilterOption.GRANTED, Boolean.TRUE.toString());
             } else if ("cancelRequest".equals(action)) {
-                filters.put(PermissionTicket.GRANTED, Boolean.FALSE.toString());
+                filters.put(PermissionTicket.FilterOption.GRANTED, Boolean.FALSE.toString());
             }
 
             for (PermissionTicket ticket : ticketStore.find(filters, resource.getResourceServer(), -1, -1)) {

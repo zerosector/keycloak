@@ -1088,7 +1088,15 @@ public class UserTest extends AbstractAdminTest {
         assertAttributeValue("value2user1", user1.getAttributes().get("attr2"));
         assertAttributeValue("value4user1", user1.getAttributes().get("attr3"));
 
-        user1.getAttributes().clear();
+        // null attributes should not remove attributes
+        user1.setAttributes(null);
+        updateUser(realm.users().get(user1Id), user1);
+        user1 = realm.users().get(user1Id).toRepresentation();
+        assertNotNull(user1.getAttributes());
+        assertEquals(2, user1.getAttributes().size());
+
+        // empty attributes should remove attributes
+        user1.setAttributes(Collections.emptyMap());
         updateUser(realm.users().get(user1Id), user1);
 
         user1 = realm.users().get(user1Id).toRepresentation();
@@ -1096,7 +1104,7 @@ public class UserTest extends AbstractAdminTest {
     }
 
     @Test
-    @AuthServerContainerExclude(QUARKUS) // TODO: Enable for quarkus
+    @AuthServerContainerExclude({REMOTE, QUARKUS}) // TODO: Enable for quarkus and remote
     public void updateUserWithReadOnlyAttributes() {
         // Admin is able to update "usercertificate" attribute
         UserRepresentation user1 = new UserRepresentation();
@@ -2038,7 +2046,6 @@ public class UserTest extends AbstractAdminTest {
         
         realm.roles().create(RoleBuilder.create().name("realm-role").build());
         realm.roles().create(realmCompositeRole);
-        realm.roles().get("realm-composite").update(realmCompositeRole);
         realm.roles().create(RoleBuilder.create().name("realm-child").build());
         realm.roles().get("realm-composite").addComposites(Collections.singletonList(realm.roles().get("realm-child").toRepresentation()));
 
@@ -2053,7 +2060,6 @@ public class UserTest extends AbstractAdminTest {
         realm.clients().get(clientUuid).roles().create(RoleBuilder.create().name("client-role").build());
         realm.clients().get(clientUuid).roles().create(RoleBuilder.create().name("client-role2").build());
         realm.clients().get(clientUuid).roles().create(clientCompositeRole);
-        realm.clients().get(clientUuid).roles().get("client-composite").update(clientCompositeRole);
         realm.clients().get(clientUuid).roles().create(RoleBuilder.create().name("client-child").build());
         realm.clients().get(clientUuid).roles().get("client-composite").addComposites(Collections.singletonList(realm.clients().get(clientUuid).roles().get("client-child").toRepresentation()));
 

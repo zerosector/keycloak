@@ -15,11 +15,15 @@
     },
 
     "realm": {
-        "provider": "${keycloak.realm.provider:}"
+        "provider": "${keycloak.realm.provider:jpa}"
     },
 
     "client": {
         "provider": "${keycloak.client.provider:jpa}"
+    },
+
+    "clientScope": {
+        "provider": "${keycloak.clientScope.provider:jpa}"
     },
 
     "group": {
@@ -54,7 +58,7 @@
     },
 
     "authorizationPersister": {
-        "provider": "${keycloak.authorization.provider:}"
+        "provider": "${keycloak.authorization.provider:jpa}"
     },
 
     "theme": {

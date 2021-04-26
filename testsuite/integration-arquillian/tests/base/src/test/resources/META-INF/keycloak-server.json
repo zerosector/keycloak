@@ -48,6 +48,10 @@
         "provider": "${keycloak.client.provider:jpa}"
     },
 
+    "clientScope": {
+        "provider": "${keycloak.clientScope.provider:jpa}"
+    },
+
     "group": {
         "provider": "${keycloak.group.provider:jpa}"
     },
@@ -124,7 +128,7 @@
 
     "connectionsHttpClient": {
         "default": {
-            "max-connection-idle-time-millis": 100
+            "reuse-connections": false
         }
     },
 
@@ -231,5 +235,9 @@
             "dir": "target/dependency/vault",
             "enabled": "${keycloak.vault.files-plaintext.provider.enabled:false}"
         }
+    },
+
+    "saml-artifact-resolver": {
+        "provider": "${keycloak.saml-artifact-resolver.provider:default}"
     }
 }

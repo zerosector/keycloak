@@ -28,12 +28,14 @@ import org.keycloak.events.jpa.JpaEventStoreProviderFactory;
 import org.keycloak.testsuite.model.KeycloakModelParameters;
 import org.keycloak.models.dblock.DBLockSpi;
 import org.keycloak.models.jpa.JpaClientProviderFactory;
+import org.keycloak.models.jpa.JpaClientScopeProviderFactory;
 import org.keycloak.models.jpa.JpaGroupProviderFactory;
 import org.keycloak.models.jpa.JpaRealmProviderFactory;
 import org.keycloak.models.jpa.JpaRoleProviderFactory;
 import org.keycloak.models.jpa.JpaUserProviderFactory;
 import org.keycloak.provider.ProviderFactory;
 import org.keycloak.provider.Spi;
+import org.keycloak.testsuite.model.Config;
 import com.google.common.collect.ImmutableSet;
 import java.util.Set;
 
@@ -57,6 +59,7 @@ public class Jpa extends KeycloakModelParameters {
       .add(DefaultJpaConnectionProviderFactory.class)
       .add(JPAAuthorizationStoreFactory.class)
       .add(JpaClientProviderFactory.class)
+      .add(JpaClientScopeProviderFactory.class)
       .add(JpaEventStoreProviderFactory.class)
       .add(JpaGroupProviderFactory.class)
       .add(JpaRealmProviderFactory.class)
@@ -71,4 +74,14 @@ public class Jpa extends KeycloakModelParameters {
         super(ALLOWED_SPIS, ALLOWED_FACTORIES);
     }
 
+
+    @Override
+    public void updateConfig(Config cf) {
+        cf.spi("client").defaultProvider("jpa")
+          .spi("clientScope").defaultProvider("jpa")
+          .spi("group").defaultProvider("jpa")
+          .spi("role").defaultProvider("jpa")
+          .spi("user").defaultProvider("jpa")
+        ;
+    }
 }

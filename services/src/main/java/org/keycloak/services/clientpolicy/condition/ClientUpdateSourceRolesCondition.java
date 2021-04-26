@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Red Hat, Inc. and/or its affiliates
+ * Copyright 2021 Red Hat, Inc. and/or its affiliates
  * and other contributors as indicated by the @author tags.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,47 +19,86 @@ package org.keycloak.services.clientpolicy.condition;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.jboss.logging.Logger;
 import org.keycloak.OAuthErrorException;
-import org.keycloak.component.ComponentModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.RoleModel;
 import org.keycloak.models.UserModel;
 import org.keycloak.representations.JsonWebToken;
-import org.keycloak.services.clientpolicy.AdminClientRegisterContext;
-import org.keycloak.services.clientpolicy.AdminClientUpdateContext;
 import org.keycloak.services.clientpolicy.ClientPolicyContext;
 import org.keycloak.services.clientpolicy.ClientPolicyException;
-import org.keycloak.services.clientpolicy.ClientPolicyLogger;
 import org.keycloak.services.clientpolicy.ClientPolicyVote;
-import org.keycloak.services.clientpolicy.ClientUpdateContext;
-import org.keycloak.services.clientpolicy.DynamicClientRegisterContext;
-import org.keycloak.services.clientpolicy.DynamicClientUpdateContext;
+import org.keycloak.services.clientpolicy.context.AdminClientRegisterContext;
+import org.keycloak.services.clientpolicy.context.AdminClientUpdateContext;
+import org.keycloak.services.clientpolicy.context.ClientCRUDContext;
+import org.keycloak.services.clientpolicy.context.DynamicClientRegisterContext;
+import org.keycloak.services.clientpolicy.context.DynamicClientUpdateContext;
 
-public class ClientUpdateSourceRolesCondition implements ClientPolicyConditionProvider {
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+/**
+ * @author <a href="mailto:takashi.norimatsu.ws@hitachi.com">Takashi Norimatsu</a>
+ */
+public class ClientUpdateSourceRolesCondition implements ClientPolicyConditionProvider<ClientUpdateSourceRolesCondition.Configuration> {
 
     private static final Logger logger = Logger.getLogger(ClientUpdateSourceRolesCondition.class);
 
+    // to avoid null configuration, use vacant new instance to indicate that there is no configuration set up.
+    private Configuration configuration = new Configuration();
     private final KeycloakSession session;
-    private final ComponentModel componentModel;
 
-    public ClientUpdateSourceRolesCondition(KeycloakSession session, ComponentModel componentModel) {
+    public ClientUpdateSourceRolesCondition(KeycloakSession session) {
         this.session = session;
-        this.componentModel = componentModel;
     }
 
     @Override
-    public String getName() {
-        return componentModel.getName();
+    public void setupConfiguration(Configuration config) {
+        this.configuration = config;
+    }
+
+    @Override
+    public Class<Configuration> getConditionConfigurationClass() {
+        return Configuration.class;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class Configuration extends ClientPolicyConditionConfiguration {
+        @JsonProperty("is-negative-logic")
+        protected Boolean negativeLogic;
+
+        public Boolean isNegativeLogic() {
+            return negativeLogic;
+        }
+
+        public void setNegativeLogic(Boolean negativeLogic) {
+            this.negativeLogic = negativeLogic;
+        }
+
+        protected List<String> roles;
+
+        public List<String> getRoles() {
+            return roles;
+        }
+
+        public void setRoles(List<String> roles) {
+            this.roles = roles;
+        }
+    }
+
+    @Override
+    public boolean isNegativeLogic() {
+        return Optional.ofNullable(this.configuration.isNegativeLogic()).orElse(Boolean.FALSE).booleanValue();
     }
 
     @Override
     public String getProviderId() {
-        return componentModel.getProviderId();
+        return ClientUpdateSourceRolesConditionFactory.PROVIDER_ID;
     }
 
     @Override
@@ -67,17 +106,17 @@ public class ClientUpdateSourceRolesCondition implements ClientPolicyConditionPr
         switch (context.getEvent()) {
         case REGISTER:
             if (context instanceof AdminClientRegisterContext) {
-                return getVoteForRolesMatched(((ClientUpdateContext)context).getAuthenticatedUser());
+                return getVoteForRolesMatched(((ClientCRUDContext)context).getAuthenticatedUser());
             } else if (context instanceof DynamicClientRegisterContext) {
-                return getVoteForRolesMatched(((ClientUpdateContext)context).getToken());
+                return getVoteForRolesMatched(((ClientCRUDContext)context).getToken());
             } else {
                 throw new ClientPolicyException(OAuthErrorException.SERVER_ERROR, "unexpected context type.");
             }
         case UPDATE:
             if (context instanceof AdminClientUpdateContext) {
-                return getVoteForRolesMatched(((ClientUpdateContext)context).getAuthenticatedUser());
+                return getVoteForRolesMatched(((ClientCRUDContext)context).getAuthenticatedUser());
             } else if (context instanceof DynamicClientUpdateContext) {
-                return getVoteForRolesMatched(((ClientUpdateContext)context).getToken());
+                return getVoteForRolesMatched(((ClientCRUDContext)context).getToken());
             } else {
                 throw new ClientPolicyException(OAuthErrorException.SERVER_ERROR, "unexpected context type.");
             }
@@ -112,8 +151,8 @@ public class ClientUpdateSourceRolesCondition implements ClientPolicyConditionPr
         Set<String> roles = user.getRoleMappingsStream().map(RoleModel::getName).collect(Collectors.toSet());
 
         if (logger.isTraceEnabled()) {
-            roles.stream().forEach(i -> ClientPolicyLogger.log(logger, " user role = " + i));
-            expectedRoles.stream().forEach(i -> ClientPolicyLogger.log(logger, "roles expected = " + i));
+            roles.forEach(i -> logger.tracev("user role = {0}", i));
+            expectedRoles.forEach(i -> logger.tracev("roles expected = {0}", i));
         }
 
         RealmModel realm = session.getContext().getRealm();
@@ -128,18 +167,14 @@ public class ClientUpdateSourceRolesCondition implements ClientPolicyConditionPr
                 return false;
             });
         });
-        if (isMatched) {
-            ClientPolicyLogger.log(logger, "role matched.");
-        } else {
-            ClientPolicyLogger.log(logger, "role unmatched.");
-        }
+
         return isMatched;
     }
 
     private Set<String> instantiateRolesForMatching() {
-        if (componentModel.getConfig() == null) return null;
-        List<String> roles = componentModel.getConfig().get(ClientUpdateSourceRolesConditionFactory.ROLES);
+        List<String> roles = configuration.getRoles();
         if (roles == null) return null;
         return new HashSet<>(roles);
     }
+
 }

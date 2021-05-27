@@ -68,7 +68,6 @@ import org.keycloak.protocol.oidc.BackchannelLogoutResponse;
 import org.keycloak.protocol.oidc.OIDCAdvancedConfigWrapper;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.protocol.oidc.TokenManager;
-import org.keycloak.protocol.saml.SamlClient;
 import org.keycloak.representations.AccessToken;
 import org.keycloak.services.ServicesLogger;
 import org.keycloak.services.Urls;
@@ -89,7 +88,10 @@ import javax.ws.rs.core.NewCookie;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriBuilder;
 import javax.ws.rs.core.UriInfo;
+import java.io.UnsupportedEncodingException;
 import java.net.URI;
+import java.net.URLEncoder;
+import java.net.URLDecoder;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
@@ -101,6 +103,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.keycloak.common.util.ServerCookie.SameSiteAttributeValue;
+import static org.keycloak.models.UserSessionModel.CORRESPONDING_SESSION_ID;
 import static org.keycloak.protocol.oidc.grants.device.DeviceGrantType.isOAuth2DeviceVerificationFlow;
 import static org.keycloak.services.util.CookieHelper.getCookie;
 
@@ -282,7 +285,11 @@ public class AuthenticationManager {
             new UserSessionManager(session).revokeOfflineUserSession(userSession);
 
             // Check if "online" session still exists and remove it too
-            UserSessionModel onlineUserSession = session.sessions().getUserSession(realm, userSession.getId());
+            String onlineUserSessionId = userSession.getNote(CORRESPONDING_SESSION_ID);
+            UserSessionModel onlineUserSession = (onlineUserSessionId != null) ?
+                    session.sessions().getUserSession(realm, onlineUserSessionId) :
+                    session.sessions().getUserSession(realm, userSession.getId());
+
             if (onlineUserSession != null) {
                 session.sessions().removeUserSession(realm, onlineUserSession);
             }
@@ -743,7 +750,11 @@ public class AuthenticationManager {
         boolean secureOnly = realm.getSslRequired().isRequired(connection);
         // remember me cookie should be persistent (hardcoded to 365 days for now)
         //NewCookie cookie = new NewCookie(KEYCLOAK_REMEMBER_ME, "true", path, null, null, realm.getCentralLoginLifespan(), secureOnly);// todo httponly , true);
-        CookieHelper.addCookie(KEYCLOAK_REMEMBER_ME, "username:" + username, path, null, null, 31536000, secureOnly, true);
+        try {
+            CookieHelper.addCookie(KEYCLOAK_REMEMBER_ME, "username:" + URLEncoder.encode(username, "UTF-8"), path, null, null, 31536000, secureOnly, true);
+        } catch (UnsupportedEncodingException e) {
+            throw new RuntimeException("Failed to urlencode", e);
+        }
     }
 
     public static String getRememberMeUsername(RealmModel realm, HttpHeaders headers) {
@@ -753,7 +764,11 @@ public class AuthenticationManager {
                 String value = cookie.getValue();
                 String[] s = value.split(":");
                 if (s[0].equals("username") && s.length == 2) {
-                    return s[1];
+                    try {
+                        return URLDecoder.decode(s[1], "UTF-8");
+                    } catch (UnsupportedEncodingException e) {
+                        throw new RuntimeException("Failed to urldecode", e);
+                    }
                 }
             }
         }

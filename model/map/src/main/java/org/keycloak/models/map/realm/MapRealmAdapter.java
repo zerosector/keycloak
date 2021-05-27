@@ -31,6 +31,7 @@ import org.keycloak.component.ComponentValidationException;
 import org.keycloak.models.AuthenticationExecutionModel;
 import org.keycloak.models.AuthenticationFlowModel;
 import org.keycloak.models.AuthenticatorConfigModel;
+import org.keycloak.models.CibaConfig;
 import org.keycloak.models.ClientInitialAccessModel;
 import org.keycloak.models.ClientModel;
 import org.keycloak.models.ClientScopeModel;
@@ -59,7 +60,7 @@ import org.keycloak.models.map.realm.entity.MapRequiredCredentialEntity;
 import org.keycloak.models.map.realm.entity.MapWebAuthnPolicyEntity;
 import org.keycloak.models.utils.ComponentUtil;
 
-public class MapRealmAdapter extends AbstractRealmModel<MapRealmEntity> implements RealmModel {
+public abstract class MapRealmAdapter<K> extends AbstractRealmModel<MapRealmEntity<K>> implements RealmModel {
 
     private static final String ACTION_TOKEN_GENERATED_BY_USER_LIFESPAN = "actionTokenGeneratedByUserLifespan";
     private static final String DEFAULT_SIGNATURE_ALGORITHM = "defaultSignatureAlgorithm";
@@ -74,13 +75,8 @@ public class MapRealmAdapter extends AbstractRealmModel<MapRealmEntity> implemen
 
     private PasswordPolicy passwordPolicy;
 
-    public MapRealmAdapter(KeycloakSession session, MapRealmEntity entity) {
+    public MapRealmAdapter(KeycloakSession session, MapRealmEntity<K> entity) {
         super(session, entity);
-    }
-
-    @Override
-    public String getId() {
-        return entity.getId();
     }
 
     @Override
@@ -567,6 +563,11 @@ public class MapRealmAdapter extends AbstractRealmModel<MapRealmEntity> implemen
     @Override
     public Stream<ClientModel> searchClientByClientIdStream(String clientId, Integer firstResult, Integer maxResults) {
         return session.clients().searchClientsByClientIdStream(this, clientId, firstResult, maxResults);
+    }
+
+    @Override
+    public Stream<ClientModel> searchClientByAttributes(Map<String, String> attributes, Integer firstResult, Integer maxResults) {
+        return session.clients().searchClientsByAttributes(this, attributes, firstResult, maxResults);
     }
 
     @Override
@@ -1546,5 +1547,14 @@ public class MapRealmAdapter extends AbstractRealmModel<MapRealmEntity> implemen
     @Override
     public OAuth2DeviceConfig getOAuth2DeviceConfig() {
         return new OAuth2DeviceConfig(this);
+    }
+
+    @Override
+    public String toString() {
+        return String.format("%s@%08x", getId(), hashCode());
+    }
+
+    public CibaConfig getCibaPolicy() {
+        return new CibaConfig(this);
     }
 }

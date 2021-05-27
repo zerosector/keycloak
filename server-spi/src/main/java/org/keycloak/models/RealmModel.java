@@ -29,9 +29,11 @@ import org.keycloak.storage.client.ClientStorageProvider;
 import org.keycloak.storage.client.ClientStorageProviderModel;
 import org.keycloak.storage.role.RoleStorageProvider;
 import org.keycloak.storage.role.RoleStorageProviderModel;
+import org.keycloak.utils.StringUtil;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -249,6 +251,8 @@ public interface RealmModel extends RoleContainerModel {
 
     OAuth2DeviceConfig getOAuth2DeviceConfig();
 
+    CibaConfig getCibaPolicy();
+
     /**
      * This method will return a map with all the lifespans available
      * or an empty map, but never null.
@@ -407,7 +411,9 @@ public interface RealmModel extends RoleContainerModel {
      * @return Stream of {@link ClientModel}. Never returns {@code null}.
      */
     Stream<ClientModel> searchClientByClientIdStream(String clientId, Integer firstResult, Integer maxResults);
-    
+
+    Stream<ClientModel> searchClientByAttributes(Map<String, String> attributes, Integer firstResult, Integer maxResults);
+
     void updateRequiredCredentials(Set<String> creds);
 
     Map<String, String> getBrowserSecurityHeaders();

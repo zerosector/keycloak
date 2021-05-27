@@ -462,6 +462,13 @@ The tests also use some constants placed in [test-constants.properties](tests/ba
 
 In case a custom `settings.xml` is used for Maven, you need to specify it also in `-Dkie.maven.settings.custom=path/to/settings.xml`.
 
+#### Execution example
+```
+mvn -f testsuite/integration-arquillian/tests/other/console/pom.xml \
+    clean test \
+    -Dbrowser=firefox \
+    -Dfirefox_binary=/opt/firefox-45.1.1esr/firefox
+```
 
 ## Spring Boot adapter tests
 
@@ -477,14 +484,6 @@ mvn -f testsuite/integration-arquillian/tests/other/springboot-tests/pom.xml \
 ```
 
 Note: Spring Boot 21 doesn't work with jetty92 and jetty93, only jetty94 is tested.
-
-#### Execution example
-```
-mvn -f testsuite/integration-arquillian/tests/other/console/pom.xml \
-    clean test \
-    -Dbrowser=firefox \
-    -Dfirefox_binary=/opt/firefox-45.1.1esr/firefox
-```
 
 ## Base UI tests
 Similarly to Admin Console tests, these tests are focused on UI, specifically on the parts of the server that are accessed by an end user (like Login page, or Account Console).
@@ -800,11 +799,11 @@ The cross DC requires setting a profile specifying used cache server by specifyi
 `cache-server-infinispan` or `cache-server-jdg` profile in maven.
 
 Since JDG does not distribute `infinispan-server` zip artifact anymore, for `cache-server-jdg` profile it is
-necessary to download the artifact and install it to local Maven repository. For JDG 7.3.0, the command is the following:
+necessary to download the artifact and install it to local Maven repository. For JDG 7.3.8, the command is the following:
 
     mvn install:install-file \
     -DgroupId=org.infinispan.server -DartifactId=infinispan-server -Dpackaging=zip -Dclassifier=bin -DgeneratePom=true \
-    -Dversion=9.4.6.Final-redhat-00002 -Dfile=jboss-datagrid-7.3.0-server.zip
+    -Dversion=9.4.21.Final-redhat-00002 -Dfile=jboss-datagrid-7.3.8-server.zip
 
 #### Run Cross-DC Tests from Maven
 

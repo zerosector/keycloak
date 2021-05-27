@@ -19,6 +19,11 @@ package org.keycloak.testsuite.model.parameters;
 import org.keycloak.cluster.infinispan.InfinispanClusterProviderFactory;
 import org.keycloak.connections.infinispan.InfinispanConnectionProviderFactory;
 import org.keycloak.connections.infinispan.InfinispanConnectionSpi;
+import org.keycloak.models.session.UserSessionPersisterSpi;
+import org.keycloak.models.sessions.infinispan.InfinispanUserLoginFailureProviderFactory;
+import org.keycloak.models.sessions.infinispan.InfinispanUserSessionProviderFactory;
+import org.keycloak.sessions.StickySessionEncoderProviderFactory;
+import org.keycloak.sessions.StickySessionEncoderSpi;
 import org.keycloak.testsuite.model.KeycloakModelParameters;
 import org.keycloak.models.cache.CacheRealmProviderSpi;
 import org.keycloak.models.cache.CacheUserProviderSpi;
@@ -28,7 +33,10 @@ import org.keycloak.provider.ProviderFactory;
 import org.keycloak.provider.Spi;
 import org.keycloak.testsuite.model.Config;
 import com.google.common.collect.ImmutableSet;
+import org.keycloak.timer.TimerProviderFactory;
+
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  *
@@ -36,10 +44,14 @@ import java.util.Set;
  */
 public class Infinispan extends KeycloakModelParameters {
 
+    private static final AtomicInteger NODE_COUNTER = new AtomicInteger();
+
     static final Set<Class<? extends Spi>> ALLOWED_SPIS = ImmutableSet.<Class<? extends Spi>>builder()
       .add(CacheRealmProviderSpi.class)
       .add(CacheUserProviderSpi.class)
       .add(InfinispanConnectionSpi.class)
+      .add(StickySessionEncoderSpi.class)
+      .add(UserSessionPersisterSpi.class)
 
       .build();
 
@@ -48,13 +60,20 @@ public class Infinispan extends KeycloakModelParameters {
       .add(InfinispanClusterProviderFactory.class)
       .add(InfinispanConnectionProviderFactory.class)
       .add(InfinispanUserCacheProviderFactory.class)
+      .add(InfinispanUserSessionProviderFactory.class)
+      .add(InfinispanUserLoginFailureProviderFactory.class)
+      .add(StickySessionEncoderProviderFactory.class)
+      .add(TimerProviderFactory.class)
       .build();
 
     @Override
     public void updateConfig(Config cf) {
         cf.spi("connectionsInfinispan")
             .provider("default")
-              .config("embedded", "true");
+              .config("embedded", "true")
+              .config("clustered", "true")
+              .config("useKeycloakTimeService", "true")
+              .config("nodeName", "node-" + NODE_COUNTER.incrementAndGet());
     }
 
     public Infinispan() {

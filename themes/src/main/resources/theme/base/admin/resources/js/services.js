@@ -1239,19 +1239,30 @@ module.factory('ClientEvaluateNotGrantedRoles', function($resource) {
     });
 });
 
-module.factory('ClientEvaluateGenerateExampleToken', function($resource) {
-    var url = authUrl + '/admin/realms/:realm/clients/:client/evaluate-scopes/generate-example-access-token?scope=:scopeParam&userId=:userId';
+module.factory('ClientEvaluateGenerateExampleAccessToken', function($resource) {
+    return buildClientEvaluateGenerateExampleUrl('generate-example-access-token');
+});
+
+module.factory('ClientEvaluateGenerateExampleIDToken', function($resource) {
+    return buildClientEvaluateGenerateExampleUrl('generate-example-id-token');
+});
+
+module.factory('ClientEvaluateGenerateExampleUserInfo', function($resource) {
+    return buildClientEvaluateGenerateExampleUrl('generate-example-userinfo');
+});
+
+function buildClientEvaluateGenerateExampleUrl(subPath) {
+    var urlTemplate = authUrl + '/admin/realms/:realm/clients/:client/evaluate-scopes/' + subPath + '?scope=:scopeParam&userId=:userId';
     return {
-        url : function(parameters)
-        {
-            return url
+        url: function (parameters) {
+            return urlTemplate
                 .replace(':realm', parameters.realm)
                 .replace(':client', parameters.client)
                 .replace(':scopeParam', parameters.scopeParam)
                 .replace(':userId', parameters.userId);
         }
     }
-});
+}
 
 module.factory('ClientProtocolMappersByProtocol', function($resource) {
     return $resource(authUrl + '/admin/realms/:realm/clients/:client/protocol-mappers/protocol/:protocol', {
@@ -2184,6 +2195,27 @@ module.factory('ClientStorageOperations', function($resource) {
 module.factory('ClientRegistrationPolicyProviders', function($resource) {
     return $resource(authUrl + '/admin/realms/:realm/client-registration-policy/providers', {
         realm : '@realm',
+    });
+});
+
+module.factory('ClientPoliciesProfiles', function($resource) {
+    return $resource(authUrl + '/admin/realms/:realm/client-policies/profiles?include-global-profiles=:includeGlobalProfiles', {
+        realm : '@realm',
+        includeGlobalProfiles : '@includeGlobalProfiles'
+    }, {
+       update : {
+           method : 'PUT'
+       }
+    });
+});
+
+module.factory('ClientPolicies', function($resource) {
+    return $resource(authUrl + '/admin/realms/:realm/client-policies/policies', {
+        realm : '@realm',
+    }, {
+       update : {
+           method : 'PUT'
+       }
     });
 });
 

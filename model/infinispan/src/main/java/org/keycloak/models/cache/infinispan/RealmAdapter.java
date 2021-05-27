@@ -654,6 +654,12 @@ public class RealmAdapter implements CachedRealmModel {
     }
 
     @Override
+    public CibaConfig getCibaPolicy() {
+        if (isUpdated()) return updated.getCibaPolicy();
+        return cached.getCibaConfig(modelSupplier);
+    }
+
+    @Override
     public List<RequiredCredentialModel> getRequiredCredentials() {
         if (isUpdated()) return updated.getRequiredCredentials();
         return cached.getRequiredCredentials();
@@ -811,6 +817,11 @@ public class RealmAdapter implements CachedRealmModel {
     @Override
     public Stream<ClientModel> searchClientByClientIdStream(String clientId, Integer firstResult, Integer maxResults) {
         return cacheSession.searchClientsByClientIdStream(this, clientId, firstResult, maxResults);
+    }
+
+    @Override
+    public Stream<ClientModel> searchClientByAttributes(Map<String, String> attributes, Integer firstResult, Integer maxResults) {
+        return cacheSession.searchClientsByAttributes(this, attributes, firstResult, maxResults);
     }
 
     @Override

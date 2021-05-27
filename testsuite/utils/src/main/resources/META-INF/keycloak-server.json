@@ -14,6 +14,17 @@
         "provider": "${keycloak.eventsStore.provider:}"
     },
 
+    "deploymentState": {
+        "provider": "${keycloak.deploymentState.provider:jpa}",
+        "map": {
+            "resourcesVersionSeed": "1JZ379bzyOCFA"
+        }
+    },
+
+    "dblock": {
+        "provider": "${keycloak.dblock.provider:jpa}"
+    },
+
     "realm": {
         "provider": "${keycloak.realm.provider:jpa}"
     },
@@ -38,8 +49,16 @@
         "provider": "${keycloak.authSession.provider:infinispan}"
     },
 
+    "userSessions": {
+        "provider": "${keycloak.userSession.provider:infinispan}"
+    },
+
+    "loginFailure": {
+        "provider": "${keycloak.loginFailure.provider:infinispan}"
+    },
+
     "mapStorage": {
-        "provider": "${keycloak.mapStorage.provider:concurrenthashmap}",
+        "provider": "${keycloak.mapStorage.provider:}",
         "concurrenthashmap": {
             "dir": "${project.build.directory:target}"
         }
@@ -141,4 +160,5 @@
             "certificateChainLength": 1
         }
     }
+
 }

@@ -228,68 +228,24 @@ module.controller('ClientX509Ctrl', function($scope, $location, Client, Notifica
     };
 });
 
-module.controller('ClientSignedJWTCtrl', function($scope, $location, Client, ClientCertificate, Notifications, $route) {
-    var signingKeyInfo = ClientCertificate.get({ realm : $scope.realm.realm, client : $scope.client.id, attribute: 'jwt.credential' },
-        function() {
-            $scope.signingKeyInfo = signingKeyInfo;
-        }
-    );
-
+module.controller('ClientSignedJWTCtrl', function($scope, Client, Notifications) {
     console.log('ClientSignedJWTCtrl invoked');
-
-    $scope.clientCopy = angular.copy($scope.client);
-    $scope.changed = false;
-
-    $scope.$watch('client', function() {
-        if (!angular.equals($scope.client, $scope.clientCopy)) {
-            $scope.changed = true;
-        }
-    }, true);
 
     $scope.tokenEndpointAuthSigningAlg = $scope.client.attributes['token.endpoint.auth.signing.alg'];
 
-    if ($scope.client.attributes["use.jwks.url"]) {
-        if ($scope.client.attributes["use.jwks.url"] == "true") {
-            $scope.useJwksUrl = true;
-        } else {
-            $scope.useJwksUrl = false;
+    $scope.$watch('tokenEndpointAuthSigningAlg', function() {
+        if (!angular.equals($scope.client.attributes['token.endpoint.auth.signing.alg'], $scope.tokenEndpointAuthSigningAlg)) {
+            $scope.client.attributes['token.endpoint.auth.signing.alg'] = $scope.tokenEndpointAuthSigningAlg;
+
+            Client.update({
+                realm : $scope.realm.realm,
+                client : $scope.client.id
+            }, $scope.client, function() {
+                Notifications.success("Signature algorithm has been saved to the client.");
+            });
         }
-    }
+    }, true);
 
-    $scope.switchChange = function() {
-        $scope.changed = true;
-    }
-
-    $scope.save = function() {
-        $scope.client.attributes['token.endpoint.auth.signing.alg'] = $scope.tokenEndpointAuthSigningAlg;
-
-        if ($scope.useJwksUrl == true) {
-            $scope.client.attributes["use.jwks.url"] = "true";
-        } else {
-            $scope.client.attributes["use.jwks.url"] = "false";
-        }
-
-        Client.update({
-            realm : $scope.realm.realm,
-            client : $scope.client.id
-        }, $scope.client, function() {
-            $scope.changed = false;
-            $scope.clientCopy = angular.copy($scope.client);
-            Notifications.success("Client authentication configuration has been saved to the client.");
-        });
-    };
-
-    $scope.importCertificate = function() {
-        $location.url("/realms/" + $scope.realm.realm + "/clients/" + $scope.client.id + "/credentials/client-jwt/Signing/import/jwt.credential");
-    };
-
-    $scope.generateSigningKey = function() {
-        $location.url("/realms/" + $scope.realm.realm + "/clients/" + $scope.client.id + "/credentials/client-jwt/Signing/export/jwt.credential");
-    };
-
-    $scope.reset = function() {
-        $route.reload();
-    };
 });
 
 module.controller('ClientGenericCredentialsCtrl', function($scope, $location, Client, Notifications) {
@@ -491,9 +447,9 @@ module.controller('ClientCertificateImportCtrl', function($scope, $location, $ht
     if (callingContext == 'saml') {
         var uploadUrl = authUrl + '/admin/realms/' + realm.realm + '/clients/' + client.id + '/certificates/' + attribute + '/upload';
         var redirectLocation = "/realms/" + realm.realm + "/clients/" + client.id + "/saml/keys";
-    } else if (callingContext == 'jwt-credentials') {
+    } else if (callingContext == 'oidc') {
         var uploadUrl = authUrl + '/admin/realms/' + realm.realm + '/clients/' + client.id + '/certificates/' + attribute + '/upload-certificate';
-        var redirectLocation = "/realms/" + realm.realm + "/clients/" + client.id + "/credentials";
+        var redirectLocation = "/realms/" + realm.realm + "/clients/" + client.id + "/oidc/keys";
     }
 
     $scope.files = [];
@@ -512,7 +468,7 @@ module.controller('ClientCertificateImportCtrl', function($scope, $location, $ht
         "Certificate PEM"
     ];
 
-    if (callingContext == 'jwt-credentials') {
+    if (callingContext == 'oidc') {
         $scope.keyFormats.push('Public Key PEM');
         $scope.keyFormats.push('JSON Web Key Set');
     }
@@ -568,7 +524,7 @@ module.controller('ClientCertificateExportCtrl', function($scope, $location, $ht
     if (callingContext == 'saml') {
         var downloadUrl = authUrl + '/admin/realms/' + realm.realm + '/clients/' + client.id + '/certificates/' + attribute + '/download';
         var realmCertificate = true;
-    } else if (callingContext == 'jwt-credentials') {
+    } else if (callingContext == 'oidc') {
         var downloadUrl = authUrl + '/admin/realms/' + realm.realm + '/clients/' + client.id + '/certificates/' + attribute + '/generate-and-download'
         var realmCertificate = false;
     }
@@ -609,8 +565,8 @@ module.controller('ClientCertificateExportCtrl', function($scope, $location, $ht
             var ext = ".jks";
             if ($scope.jks.format == 'PKCS12') ext = ".p12";
 
-            if (callingContext == 'jwt-credentials') {
-                $location.url("/realms/" + realm.realm + "/clients/" + client.id + "/credentials");
+            if (callingContext == 'oidc') {
+                $location.url("/realms/" + realm.realm + "/clients/" + client.id + "/oidc/keys");
                 Notifications.success("New keypair and certificate generated successfully. Download keystore file")
             }
 
@@ -633,8 +589,69 @@ module.controller('ClientCertificateExportCtrl', function($scope, $location, $ht
     });
 
     $scope.cancel = function() {
-        $location.url("/realms/" + realm.realm + "/clients/" + client.id + "/credentials");
+        $location.url("/realms/" + realm.realm + "/clients/" + client.id + "/oidc/keys");
     }
+});
+
+module.controller('ClientOidcKeyCtrl', function($scope, $location, realm, client, Client, ClientCertificate, Notifications, $route) {
+    $scope.realm = realm;
+    $scope.client = angular.copy(client);
+
+    var signingKeyInfo = ClientCertificate.get({ realm : realm.realm, client : client.id, attribute: 'jwt.credential' },
+        function() {
+            $scope.signingKeyInfo = signingKeyInfo;
+        }
+    );
+
+    $scope.changed = false;
+
+    $scope.$watch('client', function() {
+        if (!angular.equals($scope.client, client)) {
+            $scope.changed = true;
+        }
+    }, true);
+
+    if ($scope.client.attributes["use.jwks.url"]) {
+        if ($scope.client.attributes["use.jwks.url"] == "true") {
+            $scope.useJwksUrl = true;
+        } else {
+            $scope.useJwksUrl = false;
+        }
+    }
+
+    $scope.switchChange = function() {
+        $scope.changed = true;
+    }
+
+    $scope.save = function() {
+
+        if ($scope.useJwksUrl == true) {
+            $scope.client.attributes["use.jwks.url"] = "true";
+        } else {
+            $scope.client.attributes["use.jwks.url"] = "false";
+        }
+
+        Client.update({
+            realm : realm.realm,
+            client : client.id
+        }, $scope.client, function() {
+            $scope.changed = false;
+            client = angular.copy($scope.client);
+            Notifications.success("OIDC key has been saved to the client.");
+        });
+    };
+
+    $scope.importCertificate = function() {
+        $location.url("/realms/" + realm.realm + "/clients/" + client.id + "/oidc/Signing/import/jwt.credential");
+    };
+
+    $scope.generateSigningKey = function() {
+        $location.url("/realms/" + realm.realm + "/clients/" + client.id + "/oidc/Signing/export/jwt.credential");
+    };
+
+    $scope.reset = function() {
+        $route.reload();
+    };
 });
 
 module.controller('ClientSessionsCtrl', function($scope, realm, sessionCount, client,
@@ -1110,10 +1127,12 @@ module.controller('ClientDetailCtrl', function($scope, realm, client, flows, $ro
     $scope.disableServiceAccountRolesTab = !client.serviceAccountsEnabled;
     $scope.disableCredentialsTab = client.publicClient;
     $scope.oauth2DeviceAuthorizationGrantEnabled = false;
+    $scope.oidcCibaGrantEnabled = false;
     // KEYCLOAK-6771 Certificate Bound Token
     // https://tools.ietf.org/html/draft-ietf-oauth-mtls-08#section-3
     $scope.tlsClientCertificateBoundAccessTokens = false;
     $scope.useRefreshTokens = true;
+    $scope.useIdTokenAsDetachedSignature = false;
 
     $scope.accessTokenLifespan = TimeUnit2.asUnit(client.attributes['access.token.lifespan']);
     $scope.samlAssertionLifespan = TimeUnit2.asUnit(client.attributes['saml.assertion.lifespan']);
@@ -1302,11 +1321,27 @@ module.controller('ClientDetailCtrl', function($scope, realm, client, flows, $ro
            }
        }
 
+       if ($scope.client.attributes["oidc.ciba.grant.enabled"]) {
+           if ($scope.client.attributes["oidc.ciba.grant.enabled"] == "true") {
+               $scope.oidcCibaGrantEnabled = true;
+           } else {
+               $scope.oidcCibaGrantEnabled = false;
+           }
+       }
+
        if ($scope.client.attributes["use.refresh.tokens"]) {
            if ($scope.client.attributes["use.refresh.tokens"] == "true") {
                $scope.useRefreshTokens = true;
            } else {
                $scope.useRefreshTokens = false;
+           }
+       }
+
+       if ($scope.client.attributes["id.token.as.detached.signature"]) {
+           if ($scope.client.attributes["id.token.as.detached.signature"] == "true") {
+               $scope.useIdTokenAsDetachedSignature = true;
+           } else {
+               $scope.useIdTokenAsDetachedSignature = false;
            }
        }
 
@@ -1568,6 +1603,17 @@ module.controller('ClientDetailCtrl', function($scope, realm, client, flows, $ro
         }
     }
 
+    $scope.confirmChangeAuthzSettings = function($event) {
+        if ($scope.client.authorizationServicesEnabled && $scope.clientEdit.authorizationServicesEnabled) {
+            $event.preventDefault();
+            Dialog.confirm("Disable Authorization Settings", "Are you sure you want to disable authorization ? Once you save your changes, all authorization settings associated with this client will be removed. This operation can not be reverted.", function () {
+                $scope.clientEdit.authorizationServicesEnabled = false;
+            }, function () {
+                $scope.clientEdit.authorizationServicesEnabled = true;
+            });
+        }
+    }
+
     function configureAuthorizationServices() {
         if ($scope.clientEdit.authorizationServicesEnabled) {
             if ($scope.accessType == 'public') {
@@ -1577,12 +1623,6 @@ module.controller('ClientDetailCtrl', function($scope, realm, client, flows, $ro
             $scope.clientEdit.serviceAccountsEnabled = true;
         } else if ($scope.clientEdit.bearerOnly) {
             $scope.clientEdit.serviceAccountsEnabled = false;
-        }
-        if ($scope.client.authorizationServicesEnabled && !$scope.clientEdit.authorizationServicesEnabled) {
-            Dialog.confirm("Disable Authorization Settings", "Are you sure you want to disable authorization ? Once you save your changes, all authorization settings associated with this client will be removed. This operation can not be reverted.", function () {
-            }, function () {
-                $scope.clientEdit.authorizationServicesEnabled = true;
-            });
         }
     }
 
@@ -1722,10 +1762,22 @@ module.controller('ClientDetailCtrl', function($scope, realm, client, flows, $ro
             $scope.clientEdit.attributes["oauth2.device.authorization.grant.enabled"] = "false";
         }
 
+        if ($scope.oidcCibaGrantEnabled == true) {
+            $scope.clientEdit.attributes["oidc.ciba.grant.enabled"] = "true";
+        } else {
+            $scope.clientEdit.attributes["oidc.ciba.grant.enabled"] = "false";
+        }
+
         if ($scope.useRefreshTokens == true) {
             $scope.clientEdit.attributes["use.refresh.tokens"] = "true";
         } else {
             $scope.clientEdit.attributes["use.refresh.tokens"] = "false";
+        }
+
+        if ($scope.useIdTokenAsDetachedSignature == true) {
+            $scope.clientEdit.attributes["id.token.as.detached.signature"] = "true";
+        } else {
+            $scope.clientEdit.attributes["id.token.as.detached.signature"] = "false";
         }
 
         // KEYCLOAK-6771 Certificate Bound Token
@@ -2558,8 +2610,9 @@ module.controller('ClientClientScopesSetupCtrl', function($scope, realm, Realm, 
 });
 
 module.controller('ClientClientScopesEvaluateCtrl', function($scope, Realm, User, ClientEvaluateProtocolMappers, ClientEvaluateGrantedRoles,
-        ClientEvaluateNotGrantedRoles, ClientEvaluateGenerateExampleToken, realm, client, clients, clientScopes, serverInfo,
-        ComponentUtils, clientOptionalClientScopes, clientDefaultClientScopes, $route, $routeParams, $http, Notifications, $location,
+        ClientEvaluateNotGrantedRoles, ClientEvaluateGenerateExampleAccessToken, ClientEvaluateGenerateExampleIDToken,
+        ClientEvaluateGenerateExampleUserInfo, realm, client, clients, clientScopes, serverInfo, ComponentUtils,
+        clientOptionalClientScopes, clientDefaultClientScopes, $route, $routeParams, $http, Notifications, $location,
         Client) {
 
     console.log('ClientClientScopesEvaluateCtrl');
@@ -2595,6 +2648,8 @@ module.controller('ClientClientScopesEvaluateCtrl', function($scope, Realm, User
         $scope.notGrantedClientRoles = null;
         $scope.targetClient = null;
         $scope.oidcAccessToken = null;
+        $scope.oidcIDToken = null;
+        $scope.oidcUserInfo = null;
 
         $scope.selectedTab = 0;
     }
@@ -2728,47 +2783,73 @@ module.controller('ClientClientScopesEvaluateCtrl', function($scope, Realm, User
 
         // Send request for retrieve accessToken (in case user was selected)
         if (client.protocol === 'openid-connect' && $scope.userId != null && $scope.userId !== '') {
-            var url = ClientEvaluateGenerateExampleToken.url({
+            var exampleRequestParams = {
                 realm: realm.realm,
                 client: client.id,
                 userId: $scope.userId,
                 scopeParam: $scope.scopeParam
+            };
+
+            var accessTokenUrl = ClientEvaluateGenerateExampleAccessToken.url(exampleRequestParams);
+            getPrettyJsonResponse(accessTokenUrl).then(function (result) {
+                $scope.oidcAccessToken = result;
             });
 
-            $http.get(url).then(function (response) {
-                if (response.data) {
-                    var oidcAccessToken = angular.fromJson(response.data);
-                    oidcAccessToken = angular.toJson(oidcAccessToken, true);
-                    $scope.oidcAccessToken = oidcAccessToken;
-                } else {
-                    $scope.oidcAccessToken = null;
-                }
+            var idTokenUrl = ClientEvaluateGenerateExampleIDToken.url(exampleRequestParams);
+            getPrettyJsonResponse(idTokenUrl).then(function (result) {
+                $scope.oidcIDToken = result;
+            });
+
+            var userInfoUrl = ClientEvaluateGenerateExampleUserInfo.url(exampleRequestParams);
+            getPrettyJsonResponse(userInfoUrl).then(function (result) {
+                $scope.oidcUserInfo = result;
             });
         }
 
         $scope.showTab(1);
     };
 
+    function getPrettyJsonResponse(url) {
+        return $http.get(url).then(function (response) {
+            if (response.data) {
+                var responseJson = angular.fromJson(response.data);
+                return angular.toJson(responseJson, true);
+            } else {
+                return null;
+            }
+        });
+    }
 
     $scope.isResponseAvailable = function () {
         return $scope.protocolMappers != null;
     }
 
-    $scope.isTokenAvailable = function () {
+    $scope.isAccessTokenAvailable = function () {
         return $scope.oidcAccessToken != null;
+    }
+
+    $scope.isIDTokenAvailable = function () {
+        return $scope.oidcIDToken != null;
+    }
+
+    $scope.isUserInfoAvailable = function () {
+        return $scope.oidcUserInfo != null;
     }
 
     $scope.showTab = function (tab) {
         $scope.selectedTab = tab;
 
-        // Check if there is more clever way to do it... :/
-        if (tab === 1) {
-            $scope.tabCss = { tab1: 'active', tab2: '', tab3: '' }
-        } else if (tab === 2) {
-            $scope.tabCss = { tab1: '', tab2: 'active', tab3: '' }
-        } else if (tab === 3) {
-            $scope.tabCss = { tab1: '', tab2: '', tab3: 'active' }
+        $scope.tabCss = {
+            tab1: getTabCssClass(1, tab),
+            tab2: getTabCssClass(2, tab),
+            tab3: getTabCssClass(3, tab),
+            tab4: getTabCssClass(4, tab),
+            tab5: getTabCssClass(5, tab)
         }
+    }
+
+    function getTabCssClass(tabNo, selectedTab) {
+        return (tabNo === selectedTab) ? 'active' : '';
     }
 
     $scope.protocolMappersShown = function () {
@@ -2779,8 +2860,17 @@ module.controller('ClientClientScopesEvaluateCtrl', function($scope, Realm, User
         return $scope.selectedTab === 2;
     }
 
-    $scope.tokenShown = function () {
-        return $scope.selectedTab === 3;
+    $scope.exampleTabInfo = function() {
+        switch ($scope.selectedTab) {
+            case 3:
+                return { isShown: true, value: $scope.oidcAccessToken}
+            case 4:
+                return { isShown: true, value: $scope.oidcIDToken}
+            case 5:
+                return { isShown: true, value: $scope.oidcUserInfo}
+            default:
+                return { isShown: false, value: null}
+        }
     }
 
     $scope.sortMappersByPriority = function(mapper) {

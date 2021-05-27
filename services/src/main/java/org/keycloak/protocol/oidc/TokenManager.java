@@ -17,6 +17,7 @@
 
 package org.keycloak.protocol.oidc;
 
+import java.util.HashMap;
 import org.jboss.logging.Logger;
 import org.jboss.resteasy.spi.HttpRequest;
 import org.keycloak.OAuth2Constants;
@@ -49,7 +50,6 @@ import org.keycloak.models.TokenRevocationStoreProvider;
 import org.keycloak.models.UserConsentModel;
 import org.keycloak.models.UserModel;
 import org.keycloak.models.UserSessionModel;
-import org.keycloak.models.UserSessionProvider;
 import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.models.utils.RoleUtils;
 import org.keycloak.protocol.ProtocolMapperUtils;
@@ -92,7 +92,6 @@ import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriInfo;
 
 import static org.keycloak.representations.IDToken.NONCE;
-import static org.keycloak.representations.IDToken.PHONE_NUMBER;
 
 /**
  * Stateless object that creates tokens and manages oauth access codes
@@ -265,7 +264,12 @@ public class TokenManager {
             }
 
             if (valid) {
-                userSession.setLastSessionRefresh(Time.currentTime());
+                int currentTime = Time.currentTime();
+                userSession.setLastSessionRefresh(currentTime);
+                AuthenticatedClientSessionModel clientSession = userSession.getAuthenticatedClientSessionByClient(client.getId());
+                if (clientSession != null) {
+                    clientSession.setTimestamp(currentTime);
+                }
             }
         }
 
@@ -361,7 +365,7 @@ public class TokenManager {
 
         String scopeParam = clientSession.getNote(OAuth2Constants.SCOPE);
         if (TokenUtil.isOIDCRequest(scopeParam)) {
-            responseBuilder.generateIDToken();
+            responseBuilder.generateIDToken().generateAccessTokenHash();
         }
 
         AccessTokenResponse res = responseBuilder.build();
@@ -654,6 +658,31 @@ public class TokenManager {
         return finalToken.get();
     }
 
+    public Map<String, Object> generateUserInfoClaims(AccessToken userInfo, UserModel userModel) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("sub", userModel.getId());
+        claims.putAll(userInfo.getOtherClaims());
+
+        if (userInfo.getRealmAccess() != null) {
+            Map<String, Set<String>> realmAccess = new HashMap<>();
+            realmAccess.put("roles", userInfo.getRealmAccess().getRoles());
+            claims.put("realm_access", realmAccess);
+        }
+
+        if (userInfo.getResourceAccess() != null && !userInfo.getResourceAccess().isEmpty()) {
+            Map<String, Map<String, Set<String>>> resourceAccessMap = new HashMap<>();
+
+            for (Map.Entry<String, AccessToken.Access> resourceAccessMapEntry : userInfo.getResourceAccess()
+                    .entrySet()) {
+                Map<String, Set<String>> resourceAccess = new HashMap<>();
+                resourceAccess.put("roles", resourceAccessMapEntry.getValue().getRoles());
+                resourceAccessMap.put(resourceAccessMapEntry.getKey(), resourceAccess);
+            }
+            claims.put("resource_access", resourceAccessMap);
+        }
+        return claims;
+    }
+
     public void transformIDToken(KeycloakSession session, IDToken token,
                                       UserSessionModel userSession, ClientSessionContext clientSessionCtx) {
 
@@ -938,6 +967,10 @@ public class TokenManager {
         }
 
         public AccessTokenResponseBuilder generateIDToken() {
+            return generateIDToken(false);
+        }
+
+        public AccessTokenResponseBuilder generateIDToken(boolean isIdTokenAsDetachedSignature) {
             if (accessToken == null) {
                 throw new IllegalStateException("accessToken not set");
             }
@@ -954,7 +987,9 @@ public class TokenManager {
             idToken.setSessionState(accessToken.getSessionState());
             idToken.expiration(accessToken.getExpiration());
             idToken.setAcr(accessToken.getAcr());
-            transformIDToken(session, idToken, userSession, clientSessionCtx);
+            if (isIdTokenAsDetachedSignature == false) {
+                transformIDToken(session, idToken, userSession, clientSessionCtx);
+            }
             return this;
         }
 

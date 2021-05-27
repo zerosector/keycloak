@@ -164,6 +164,8 @@ public class DefaultKeycloakSessionFactory implements KeycloakSessionFactory, Pr
 
         }
         factoriesMap = copy;
+        // need to update the default provider map
+        checkProvider();
         boolean cfChanged = false;
         for (ProviderFactory factory : undeployed) {
             invalidate(ObjectType.PROVIDER_FACTORY, factory.getClass());
@@ -216,11 +218,14 @@ public class DefaultKeycloakSessionFactory implements KeycloakSessionFactory, Pr
     }
 
     protected void checkProvider() {
+        // make sure to recreated the default providers map
+        provider.clear();
+
         for (Spi spi : spis) {
             String defaultProvider = Config.getProvider(spi.getName());
             if (defaultProvider != null) {
                 if (getProviderFactory(spi.getProviderClass(), defaultProvider) == null) {
-                    throw new RuntimeException("Failed to find provider " + provider + " for " + spi.getName());
+                    throw new RuntimeException("Failed to find provider " + defaultProvider + " for " + spi.getName());
                 }
             } else {
                 Map<String, ProviderFactory> factories = factoriesMap.get(spi.getProviderClass());

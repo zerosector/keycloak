@@ -65,6 +65,7 @@ import org.keycloak.models.AuthenticationExecutionModel;
 import org.keycloak.models.AuthenticationFlowModel;
 import org.keycloak.models.AuthenticatorConfigModel;
 import org.keycloak.models.BrowserSecurityHeaders;
+import org.keycloak.models.CibaConfig;
 import org.keycloak.models.ClaimMask;
 import org.keycloak.models.ClientModel;
 import org.keycloak.models.ClientScopeModel;
@@ -292,6 +293,8 @@ public class RepresentationToModel {
 
         webAuthnPolicy = getWebAuthnPolicyPasswordless(rep);
         newRealm.setWebAuthnPolicyPasswordless(webAuthnPolicy);
+
+        updateCibaSettings(rep, newRealm);
 
         Map<String, String> mappedFlows = importAuthenticationFlows(newRealm, rep);
         if (rep.getRequiredActions() != null) {
@@ -1177,6 +1180,9 @@ public class RepresentationToModel {
         webAuthnPolicy = getWebAuthnPolicyPasswordless(rep);
         realm.setWebAuthnPolicyPasswordless(webAuthnPolicy);
 
+        updateCibaSettings(rep, realm);
+        session.clientPolicy().updateRealmModelFromRepresentation(realm, rep);
+
         if (rep.getSmtpServer() != null) {
             Map<String, String> config = new HashMap(rep.getSmtpServer());
             if (rep.getSmtpServer().containsKey("password") && ComponentRepresentation.SECRET_VALUE.equals(rep.getSmtpServer().get("password"))) {
@@ -1217,6 +1223,17 @@ public class RepresentationToModel {
         if (rep.getDockerAuthenticationFlow() != null) {
             realm.setDockerAuthenticationFlow(realm.getFlowByAlias(rep.getDockerAuthenticationFlow()));
         }
+
+    }
+
+    private static void updateCibaSettings(RealmRepresentation rep, RealmModel realm) {
+        Map<String, String> newAttributes = rep.getAttributesOrEmpty();
+        CibaConfig cibaPolicy = realm.getCibaPolicy();
+
+        cibaPolicy.setBackchannelTokenDeliveryMode(newAttributes.get(CibaConfig.CIBA_BACKCHANNEL_TOKEN_DELIVERY_MODE));
+        cibaPolicy.setExpiresIn(newAttributes.get(CibaConfig.CIBA_EXPIRES_IN));
+        cibaPolicy.setPoolingInterval(newAttributes.get(CibaConfig.CIBA_INTERVAL));
+        cibaPolicy.setAuthRequestedUserHint(newAttributes.get(CibaConfig.CIBA_AUTH_REQUESTED_USER_HINT));
     }
 
     // Basic realm stuff
@@ -2069,7 +2086,7 @@ public class RepresentationToModel {
             model.setAuthenticatorConfig(config.getId());
         }
         model.setAuthenticator(rep.getAuthenticator());
-        model.setAuthenticatorFlow(rep.isAutheticatorFlow());
+        model.setAuthenticatorFlow(rep.isAuthenticatorFlow());
         if (rep.getFlowAlias() != null) {
             AuthenticationFlowModel flow = realm.getFlowByAlias(rep.getFlowAlias());
             model.setFlowId(flow.getId());
@@ -2095,7 +2112,7 @@ public class RepresentationToModel {
         model.setAuthenticator(rep.getAuthenticator());
         model.setPriority(rep.getPriority());
         model.setParentFlow(rep.getParentFlow());
-        model.setAuthenticatorFlow(rep.isAutheticatorFlow());
+        model.setAuthenticatorFlow(rep.isAuthenticatorFlow());
         model.setRequirement(AuthenticationExecutionModel.Requirement.valueOf(rep.getRequirement()));
 
         if (rep.getAuthenticatorConfig() != null) {

@@ -113,7 +113,29 @@ public final class QuarkusJpaConnectionProviderFactory implements JpaConnectionP
     @Override
     public void postInit(KeycloakSessionFactory factory) {
         this.factory = factory;
-        lazyInit();
+        Instance<EntityManagerFactory> instance = CDI.current().select(EntityManagerFactory.class);
+
+        if (!instance.isResolvable()) {
+            throw new RuntimeException("Failed to resolve " + EntityManagerFactory.class + " from Quarkus runtime");
+        }
+
+        emf = instance.get();
+
+        KeycloakSession session = factory.create();
+        boolean initSchema;
+
+        try (Connection connection = getConnection()) {
+            createOperationalInfo(connection);
+            initSchema = createOrUpdateSchema(getSchema(), connection, session);
+        } catch (SQLException cause) {
+            throw new RuntimeException("Failed to update database.", cause);
+        } finally {
+            session.close();
+        }
+
+        if (initSchema) {
+            runJobInTransaction(factory, this::initSchemaOrExport);
+        }
     }
 
     @Override
@@ -156,36 +178,20 @@ public final class QuarkusJpaConnectionProviderFactory implements JpaConnectionP
         }
     }
 
-    private void lazyInit() {
-        Instance<EntityManagerFactory> instance = CDI.current().select(EntityManagerFactory.class);
-
-        if (!instance.isResolvable()) {
-            throw new RuntimeException("Failed to resolve " + EntityManagerFactory.class + " from Quarkus runtime");
-        }
-
-        emf = instance.get();
-
-        KeycloakSession session = factory.create();
-        boolean initSchema;
-
-        try (Connection connection = getConnection()) {
-            logDatabaseConnectionInfo(connection);
-            initSchema = createOrUpdateSchema(getSchema(), connection, session);
-        } catch (SQLException cause) {
-            throw new RuntimeException("Failed to update database.", cause);
-        } finally {
-            session.close();
-        }
-
-        if (initSchema) {
-            runJobInTransaction(factory, this::initSchemaOrExport);
-        }
-    }
-
     private void initSchemaOrExport(KeycloakSession session) {
         ExportImportManager exportImportManager = new ExportImportManager(session);
-        logger.debug("Calling migrateModel");
-        migrateModel(session);
+        
+        /*
+         * Migrate model is executed just in case following providers are "jpa".
+         * In Map Storage, there is an assumption that migrateModel is not needed.
+         */
+        if ((Config.getProvider("realm") == null || "jpa".equals(Config.getProvider("realm"))) &&
+            (Config.getProvider("client") == null || "jpa".equals(Config.getProvider("client"))) &&
+            (Config.getProvider("clientScope") == null || "jpa".equals(Config.getProvider("clientScope")))) {
+
+            logger.debug("Calling migrateModel");
+            migrateModel(session);
+        }
 
         DBLockManager dbLockManager = new DBLockManager(session);
         dbLockManager.checkForcedUnlock();
@@ -386,7 +392,7 @@ public final class QuarkusJpaConnectionProviderFactory implements JpaConnectionP
         return new File(databaseUpdateFile);
     }
 
-    private void logDatabaseConnectionInfo(Connection connection) {
+    private void createOperationalInfo(Connection connection) {
         try {
             operationalInfo = new LinkedHashMap<>();
             DatabaseMetaData md = connection.getMetaData();

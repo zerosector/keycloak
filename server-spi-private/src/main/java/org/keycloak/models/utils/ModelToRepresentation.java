@@ -44,6 +44,7 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -94,8 +95,8 @@ public class ModelToRepresentation {
         REALM_EXCLUDED_ATTRIBUTES.add("webAuthnPolicyAvoidSameAuthenticatorRegisterPasswordless");
         REALM_EXCLUDED_ATTRIBUTES.add("webAuthnPolicyAcceptableAaguidsPasswordless");
 
-        REALM_EXCLUDED_ATTRIBUTES.add("client-policies.profiles");
-        REALM_EXCLUDED_ATTRIBUTES.add("client-policies.policies");
+        REALM_EXCLUDED_ATTRIBUTES.add(Constants.CLIENT_POLICIES);
+        REALM_EXCLUDED_ATTRIBUTES.add(Constants.CLIENT_PROFILES);
     }
 
 
@@ -294,7 +295,7 @@ public class ModelToRepresentation {
         return rep;
     }
 
-    public static RealmRepresentation toRepresentation(RealmModel realm, boolean internal) {
+    public static RealmRepresentation toRepresentation(KeycloakSession session, RealmModel realm, boolean internal) {
         RealmRepresentation rep = new RealmRepresentation();
         rep.setId(realm.getId());
         rep.setRealm(realm.getName());
@@ -399,6 +400,14 @@ public class ModelToRepresentation {
         rep.setWebAuthnPolicyPasswordlessAvoidSameAuthenticatorRegister(webAuthnPolicy.isAvoidSameAuthenticatorRegister());
         rep.setWebAuthnPolicyPasswordlessAcceptableAaguids(webAuthnPolicy.getAcceptableAaguids());
 
+        CibaConfig cibaPolicy = realm.getCibaPolicy();
+        Map<String, String> attrMap = Optional.ofNullable(rep.getAttributes()).orElse(new HashMap<>());
+        attrMap.put(CibaConfig.CIBA_BACKCHANNEL_TOKEN_DELIVERY_MODE, cibaPolicy.getBackchannelTokenDeliveryMode());
+        attrMap.put(CibaConfig.CIBA_EXPIRES_IN, String.valueOf(cibaPolicy.getExpiresIn()));
+        attrMap.put(CibaConfig.CIBA_INTERVAL, String.valueOf(cibaPolicy.getPoolingInterval()));
+        attrMap.put(CibaConfig.CIBA_AUTH_REQUESTED_USER_HINT, cibaPolicy.getAuthRequestedUserHint());
+        rep.setAttributes(attrMap);
+
         if (realm.getBrowserFlow() != null) rep.setBrowserFlow(realm.getBrowserFlow().getAlias());
         if (realm.getRegistrationFlow() != null) rep.setRegistrationFlow(realm.getRegistrationFlow().getAlias());
         if (realm.getDirectGrantFlow() != null) rep.setDirectGrantFlow(realm.getDirectGrantFlow().getAlias());
@@ -437,6 +446,8 @@ public class ModelToRepresentation {
             exportRequiredActions(realm, rep);
             exportGroups(realm, rep);
         }
+
+        session.clientPolicy().updateRealmRepresentationFromModel(realm, rep);
 
         rep.setAttributes(stripRealmAttributesIncludedAsFields(realm.getAttributes()));
 
@@ -726,7 +737,7 @@ public class ModelToRepresentation {
             rep.setAuthenticatorConfig(config.getAlias());
         }
         rep.setAuthenticator(model.getAuthenticator());
-        rep.setAutheticatorFlow(model.isAuthenticatorFlow());
+        rep.setAuthenticatorFlow(model.isAuthenticatorFlow());
         if (model.getFlowId() != null) {
             AuthenticationFlowModel flow = realm.getAuthenticationFlowById(model.getFlowId());
             rep.setFlowAlias(flow.getAlias());
